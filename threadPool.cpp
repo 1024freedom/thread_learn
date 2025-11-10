@@ -5,9 +5,14 @@
 #include<functional>
 #include<mutex>
 #include<condition_variable>
-class ThreadPool {//wcnm
-public:
-    ThreadPool(int numThreads):stop(false){
+
+static std::once_flag initFlag;
+
+class ThreadPool {
+    //禁用拷贝构造和赋值运算符
+    ThreadPool& operator=(const ThreadPool& threadPool)=delete;
+    ThreadPool(const ThreadPool& threadPool)=delete;
+    ThreadPool():stop(false){
         for(int i=0;i<numThreads;i++){
             threads.emplace_back([this]{
                 //该方法相比于pushback比较节省资源（它可以直接在容器内存中构造对象，避免了额外的临时对象创建和拷贝/移动操作。）
@@ -30,16 +35,26 @@ public:
             });
         }
     }
+public:
+
     ~ThreadPool(){
         std::unique_lock<std::mutex> lock(mtx);
         stop=true;
         condition.notify_all();
+        lock.unlock();
         for(auto& t:threads){
             t.join();
         }
     }
+    
+    static ThreadPool& getInstance(){
+        std::call_once(initFlag,[]{
+            instance.reset(new ThreadPool());
+        });
+        return *instance;
+    }
     template<class F,class... Args>
-    void enqueue(F&& f,Args&&... args){//&&万能引用，args是f的参数
+    void enqueue(F&& f,Args&&... args){//&&万能引用，args是f的参数(可变参数模板)
         std::function<void()>task=
         std::bind(std::forward<F>(f),std::forward<Args>(args)...);
         std::unique_lock<std::mutex> lock(mtx);
@@ -47,14 +62,18 @@ public:
         condition.notify_one();
     }
 private:
+    int numThreads=10;
     std::vector<std::thread> threads;//线程数组
     std::queue<std::function<void()>> tasks;//任务队列
     std::mutex mtx;
     std::condition_variable condition;
     bool stop;
+    
 };
+static std::unique_ptr<ThreadPool> instance=nullptr;
+
 int main(){
-    ThreadPool pool(4);
+    ThreadPool& pool=ThreadPool::getInstance();
     for(int i=0;i<10;i++){
         pool.enqueue([i]{
             std::cout<<"task:"<<i<<"is running"<<std::endl;
