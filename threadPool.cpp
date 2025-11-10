@@ -6,7 +6,7 @@
 #include<mutex>
 #include<condition_variable>
 
-static std::once_flag initFlag;
+// static std::once_flag initFlag;
 
 class ThreadPool {
     //禁用拷贝构造和赋值运算符
@@ -48,10 +48,8 @@ public:
     }
     
     static ThreadPool& getInstance(){
-        std::call_once(initFlag,[]{
-            instance.reset(new ThreadPool());
-        });
-        return *instance;
+        static ThreadPool instance;
+        return instance;
     }
     template<class F,class... Args>
     void enqueue(F&& f,Args&&... args){//&&万能引用，args是f的参数(可变参数模板)
@@ -68,10 +66,7 @@ private:
     std::mutex mtx;
     std::condition_variable condition;
     bool stop;
-    
 };
-static std::unique_ptr<ThreadPool> instance=nullptr;
-
 int main(){
     ThreadPool& pool=ThreadPool::getInstance();
     for(int i=0;i<10;i++){
